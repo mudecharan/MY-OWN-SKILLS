@@ -1,0 +1,43 @@
+version: 2
+
+# dbt-transformation-guide · schema.yml with generic + singular test coverage
+models:
+  - name: stg_orders
+    description: "One row per order, lightly transformed from raw. No business logic here."
+    columns:
+      - name: order_id
+        description: "Natural key from source system."
+        tests:
+          - unique
+          - not_null
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'paid', 'shipped', 'delivered', 'cancelled']
+      - name: ordered_at
+        tests:
+          - not_null
+
+  - name: fct_orders
+    description: "Grain: one row per order line."
+    columns:
+      - name: order_line_sk
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
+      - name: line_revenue
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+
+# Singular test example → tests/assert_revenue_matches_finance.sql:
+#
+# select 'revenue_mismatch' as failure
+# having abs(
+#   (select sum(line_revenue) from {{ ref('fct_orders') }} where order_date >= dateadd(day,-1,current_date))
+#   - <finance_number_source>
+# ) > <tolerance>;
